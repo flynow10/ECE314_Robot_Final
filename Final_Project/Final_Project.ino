@@ -31,20 +31,22 @@ const int ultraServoPin = 1; //servo pin
 /* ---------- LCD Parameters ---------- */
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 
-/* ---------- Rotery Encoder Parameters ---------- */
+/* ---------- Rotery Encoder and PID Parameters ---------- */
 //pins
 const int LWEncoderPin = 3;
 const int RWEncoderPin = 2;
 
 //gains
-const int kp = 12 * 100;
-const int ki = 0.1 * 100;
-const int kd = 1 * 100;
+const float kp = 12;
+const float ki = 0.1;
+const float kd = 1;
 
-//errors
-int delCntr = 0; 
-int prevErr = 0;
-int sumErr = 0;
+//previous time
+unsigned long prevTime = 0;
+
+//persistant errors
+float prevErr = 0;
+float sumErr = 0;
 
 //turn constants
 const long softTurnConstant = 25;
@@ -53,6 +55,10 @@ const long hardTurnConstant = 20;
 //interrupt variables
 volatile long cntrL, cntrR;
 volatile long LIntTime, RIntTime;
+
+//PID PWM variables
+int PIDRSPD = 0; //Right Wheel PWM with PID control
+int PIDLSPD = 0; //Left Wheel PWM with PID control
 
 /* ---------- Ultrasonic Sensor Parameters ---------- */
 const int trigPin = 4;
@@ -232,6 +238,7 @@ void moveForward() {
   digitalWrite(RWhFwdPin,HIGH);   //run right wheel forward
   digitalWrite(RWhBwdPin,LOW);
   PID();
+
 }
 
 //move backward with PID
@@ -321,23 +328,26 @@ void PID() {
   /* ---------- PID Controller ---------- */
   //getting counter values
   delay(10);
-  long tmpLcntr, tmpRcntr;
-  tmpLcntr = cntrL;
-  tmpRcntr = cntrR;
-  
+  long tmpLcntr = cntrL;
+  long tmpRcntr = cntrR;
+
+  //calculating dt
+  unsigned long currTime = millis();
+  float dt = (currTime - prevTime) / 1000.0;
+  prevTime = currTime;
+  if (dt <= 0) {return;} //dt <= 0 is impossible
+
   //calculating error
-  delCntr = tmpLcntr - tmpRcntr;
+  float propErr = tmpLcntr - tmpRcntr; //proportional error
+  if (abs(propErr) < 1) {propErr = 0;} //errors less than 1 are impossible
+  sumErr += propErr*dt; //integral error
+  float derErr = (propErr - prevErr)/dt; //derivative error
+  float totalErr = kp*propErr + ki*sumErr + kd*derErr; //total error
   
-  if (delCntr > 0) { //positive error indicates too much left motor power
-    analogWrite(RWhPWMPin, RSPD);
-    analogWrite(LWhPWMPin, LSPD - ((kp*delCntr + ki*sumErr + kd*(delCntr - prevErr))/100));
-  } else if (delCntr < 0) { //negative error indicates too much right motor power
-    analogWrite(RWhPWMPin, RSPD + ((kp*delCntr + ki*sumErr + kd*(delCntr - prevErr))/100));
-    analogWrite(LWhPWMPin, LSPD);
-  } else {
-    
-  }
-  //adjusting derivative and integral values
-  prevErr = delCntr;
-  sumErr += delCntr;
+  //adjusting control values
+  const int PID_MAX = 10; //maximum modification of motor speed from PID control
+  PIDLSPD  = constrain(LSPD - totalErr, LSPD - PID_MAX, LSPD + PID_MAX);
+  PIDRSPD = constrain(RSPD + totalErr, RSPD - PID_MAX, RSPD + PID_MAX);
+  
+  prevErr = propErr; //saving previous error
 }
