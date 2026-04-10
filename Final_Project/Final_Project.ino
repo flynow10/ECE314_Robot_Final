@@ -20,6 +20,10 @@ const int RWhFwdPin = 11;
 const int RWhBwdPin = 10;
 const int RWhPWMPin = 5; 
 
+//turn constants
+const long softTurnConstant = 25;
+const long hardTurnConstant = 20;
+
 /* ---------- IR Remote Parameters ---------- */
 const int IRPin = 12;
 long decodeTime = 0;
@@ -31,34 +35,14 @@ const int ultraServoPin = 1; //servo pin
 /* ---------- LCD Parameters ---------- */
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 
-/* ---------- Rotery Encoder and PID Parameters ---------- */
+/* ---------- Rotery Encoder Parameters ---------- */
 //pins
 const int LWEncoderPin = 3;
 const int RWEncoderPin = 2;
 
-//gains
-const float kp = 12;
-const float ki = 0.1;
-const float kd = 1;
-
-//previous time
-unsigned long prevTime = 0;
-
-//persistant errors
-float prevErr = 0;
-float sumErr = 0;
-
-//turn constants
-const long softTurnConstant = 25;
-const long hardTurnConstant = 20;
-
 //interrupt variables
 volatile long cntrL, cntrR;
 volatile long LIntTime, RIntTime;
-
-//PID PWM variables
-int PIDRSPD = 0; //Right Wheel PWM with PID control
-int PIDLSPD = 0; //Left Wheel PWM with PID control
 
 /* ---------- Ultrasonic Sensor Parameters ---------- */
 const int trigPin = 4;
@@ -72,6 +56,27 @@ const int lXShut = A2;
 
 VL53L0X rSensor;
 VL53L0X lSensor;
+
+/* ---------- PID Parameters ---------- */
+
+//reset variable
+bool resetPID = false;
+
+//gains
+const float kp = 10;
+const float ki = 1;
+const float kd = 0.2;
+
+//previous time
+unsigned long prevTime = 0;
+
+//persistant errors
+float prevErr = 0;
+float sumErr = 0;
+
+//PID PWM variables
+int PIDRSPD = 0; //Right Wheel PWM with PID control
+int PIDLSPD = 0; //Left Wheel PWM with PID control
 
 /* ---------- State Machine Parameters ---------- */
 enum State {
@@ -157,6 +162,7 @@ void setup() {
 }
 
 void loop() {
+ 
   /* ---------- Sensors and LCD ---------- */
   //sending trigger signal to US sensor
   digitalWrite(trigPin, LOW);
@@ -187,7 +193,7 @@ void loop() {
       default: current_state = Stop; break;
     }
     IrReceiver.resume();
-  } else if (micros() > (decodeTime + 200000L)) {
+  } else if (micros() > (decodeTime + 500000L)) {
     current_state = Stop;
   }
 
@@ -229,6 +235,9 @@ void stopMoving() {
   digitalWrite(LWhBwdPin,LOW);
   digitalWrite(RWhFwdPin,LOW);   
   digitalWrite(RWhBwdPin,LOW);
+  analogWrite(RWhPWMPin, 0);
+  analogWrite(LWhPWMPin, 0);
+  resetPID = true;
 }
 
 //move forward with PID
@@ -238,7 +247,8 @@ void moveForward() {
   digitalWrite(RWhFwdPin,HIGH);   //run right wheel forward
   digitalWrite(RWhBwdPin,LOW);
   PID();
-
+  analogWrite(RWhPWMPin, PIDRSPD); //adjust speeds based on PID control
+  analogWrite(LWhPWMPin, PIDLSPD);
 }
 
 //move backward with PID
@@ -248,6 +258,8 @@ void moveBackward() {
   digitalWrite(RWhFwdPin,LOW);    //run right wheel backward
   digitalWrite(RWhBwdPin,HIGH);
   PID();
+  analogWrite(RWhPWMPin, PIDRSPD); //adjust speeds based on PID control
+  analogWrite(LWhPWMPin, PIDLSPD);
 }
 
 void softTurnRight() {
@@ -260,6 +272,7 @@ void softTurnRight() {
   cntrL = 0;
   cntrR = 0;
   while (cntrL < (cntrR + softTurnConstant)) { 
+    analogWrite(RWhPWMPin,0); 
     analogWrite(LWhPWMPin,LSPD); 
   }
   stopMoving();
@@ -298,9 +311,10 @@ void softTurnLeft() {
   cntrR = 0;
   while (cntrR < (cntrL + softTurnConstant)) { 
     analogWrite(RWhPWMPin,RSPD);
+    analogWrite(LWhPWMPin,0);
   }
   stopMoving();
-  delay(1000); 
+  delay(1000);
   cntrL=oldcntrL;
   cntrR=oldcntrR;
 }
@@ -326,8 +340,18 @@ void hardTurnLeft() {
 
 void PID() {
   /* ---------- PID Controller ---------- */
+  delay(20); //delay
+  //reset code
+  if (resetPID) {
+    resetPID = false;
+    cntrL = 0;
+    cntrR = 0;
+    prevTime = millis();
+    sumErr = 0;
+    prevErr = 0;
+  }
+
   //getting counter values
-  delay(10);
   long tmpLcntr = cntrL;
   long tmpRcntr = cntrR;
 
@@ -343,9 +367,11 @@ void PID() {
   sumErr += propErr*dt; //integral error
   float derErr = (propErr - prevErr)/dt; //derivative error
   float totalErr = kp*propErr + ki*sumErr + kd*derErr; //total error
+
+  Serial.println(totalErr);
   
   //adjusting control values
-  const int PID_MAX = 10; //maximum modification of motor speed from PID control
+  const int PID_MAX = 50; //maximum modification of motor speed from PID control
   PIDLSPD  = constrain(LSPD - totalErr, LSPD - PID_MAX, LSPD + PID_MAX);
   PIDRSPD = constrain(RSPD + totalErr, RSPD - PID_MAX, RSPD + PID_MAX);
   
