@@ -15,10 +15,13 @@
 // Setup constants
 
 constexpr int RightBaseSpeed = 200;        //Right Wheel PWM
-constexpr int LeftBaseSpeed = 250;        //Left Wheel PWM
+constexpr int LeftBaseSpeed = 200;        //Left Wheel PWM
 
 constexpr int LeftTurnCounterOffset = 25;
 constexpr int RightTurnCounterOffset = 25;
+
+constexpr int wallFollowSetPoint = 300;
+constexpr int wallFollowMaxDelta = 10;
 
 volatile long wheel_counter_left, wheel_counter_right;
 volatile ulong LIntTime, RIntTime;
@@ -49,6 +52,7 @@ void drive(const int speed) {
   } else {
     power[1] -= min(-output, power[1]);
   }
+  Serial.println(power[0]);
   leftMotor.set_speed(power[0]);
   rightMotor.set_speed(power[1]);
   leftMotor.start();
@@ -108,6 +112,7 @@ void rightWhlCnt()  // Complete this ISR for your right wheel
 }
 
 void setup() {
+  Serial.begin(9600);
 
   lcd.init();
   lcd.backlight();
@@ -138,6 +143,8 @@ void setup() {
 }
 
 void loop() {
+
+  /*
   lcd.setCursor(0, 1); 
   lcd.print("                "); //clear bottom row
   lcd.setCursor(0, 1); 
@@ -148,6 +155,7 @@ void loop() {
   lcd.print(rSensor.getRangeMilimeters()); //print left ToF sensor reading
   lcd.setCursor(14, 1);
   lcd.print(currentState);
+  */
   // Serial.println(currentState);
   switch(currentState) {
     case STOP: {
@@ -155,13 +163,32 @@ void loop() {
       break;
     }
     case FORWARD: {
-      drive(100);
+      int rDist = rSensor.getRangeMilimeters();
+  
+      if (rDist < (wallFollowSetPoint - wallFollowMaxDelta)) {
+        rightMotor.set_speed(60);
+        leftMotor.set_speed(50);
+        leftMotor.start();
+        rightMotor.start();
+      } else if (rDist > (wallFollowSetPoint + wallFollowMaxDelta)) {
+        rightMotor.set_speed(55);
+        leftMotor.set_speed(60);
+        leftMotor.start();
+        rightMotor.start();
+      } else {
+        rightMotor.set_speed(50);
+        leftMotor.set_speed(50);
+        leftMotor.start();
+        rightMotor.start();
+        //drive(100);
+      }
+
       /*
-      const ulong inches = readUltrasonic();
+      const ulong inches = microsecondsToInches(readUltrasonic());
       if(inches != 0 && inches <= 4) {
         currentState = TURN_LEFT;
       }
-        */
+      */
       break;
     }
     case TURN_LEFT: {
