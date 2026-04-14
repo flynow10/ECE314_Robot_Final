@@ -3,7 +3,7 @@
 #include <Wire.h> //Library for I2C communication
 #include <LiquidCrystal_I2C.h> //Library for LCD
 #include <IRremote.hpp> //Library for IR Remote
-#include <VL53L0X.h> //Library for ToF sensor
+#include "ToF.hpp" //wrapper class for ToF sensor
 
 
 /* ---------- Motor Parameters ---------- */
@@ -26,7 +26,6 @@ const int hardTurnConstant = 15;
 
 /* ---------- IR Remote Parameters ---------- */
 const int IRPin = 8;
-long decodeTime = 0;
 
 /* ---------- Servo Parameters ---------- */
 Servo ultraServo;  //servo object to control ultrasonic servo
@@ -34,6 +33,7 @@ const int ultraServoPin = 9; //servo pin
 
 /* ---------- LCD Parameters ---------- */
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
+long updateTime = 0;
 
 /* ---------- Rotery Encoder Parameters ---------- */
 //pins
@@ -54,8 +54,8 @@ long distance = 0;
 const int rXShut = A3;
 const int lXShut = A2;
 
-VL53L0X rSensor;
-VL53L0X lSensor;
+ToF rSensor = ToF(rXShut);
+ToF lSensor = ToF(lXShut);
 
 /* ---------- PID Parameters ---------- */
 
@@ -132,47 +132,25 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(RWEncoderPin), rightWhlCnt, CHANGE);
 
   //setting up ToF sensors
-  Wire.begin();
-  pinMode(rXShut, OUTPUT);
-  pinMode(lXShut, OUTPUT);
-  digitalWrite(rXShut, LOW);
-  digitalWrite(lXShut, LOW);
-  //set left sensor parameters
-  delay(20);
-  digitalWrite(lXShut, HIGH);
-  delay(20);
-  lSensor.setAddress(0x30);
-  lSensor.setTimeout(500);
-  if (!lSensor.init())
-  {
-    Serial.println("Failed to detect and initialize left sensor!");
-    while (1) {}
-  }
-  //set right sensor parameters
-  delay(20);
-  digitalWrite(rXShut, HIGH);
-  delay(20);
-  rSensor.setAddress(0x31);
-  rSensor.setTimeout(500);
-  if (!rSensor.init())
-  {
-    Serial.println("Failed to detect and initialize right sensor!");
-    while (1) {}
-  }
+  lSensor.init(0x30);
+  rSensor.init(0x31);
 }
 
 void loop() {
   /* ---------- Sensors and LCD ---------- */
-  lcd.setCursor(0, 1); 
-  lcd.print("                "); //clear bottom row
-  lcd.setCursor(0, 1); 
-  lcd.print(distance); // Print the current ultrasonic reading in inches
-  lcd.setCursor(3, 1);
-  lcd.print(lSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
-  lcd.setCursor(8, 1);
-  lcd.print(rSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
-  lcd.setCursor(14, 1);
-  lcd.print(current_state);  
+  if (millis() > updateTime + 100) {
+    lcd.setCursor(0, 1); 
+    lcd.print("                "); //clear bottom row
+    lcd.setCursor(0, 1); 
+    lcd.print(distance); // Print the current ultrasonic reading in inches
+    lcd.setCursor(3, 1);
+    lcd.print(lSensor.getRangeMilimeters()); //print left ToF sensor reading
+    lcd.setCursor(8, 1);
+    lcd.print(rSensor.getRangeMilimeters()); //print left ToF sensor reading
+    lcd.setCursor(14, 1);
+    lcd.print(current_state);
+    updateTime = millis();
+  }
   /* ---------- IR Reciever ---------- */
   //setting states
   if (IrReceiver.decode()) { //checking for input from IR
