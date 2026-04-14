@@ -2,6 +2,7 @@
 #define TOF
 
 #include <VL53L0X.h> //Library for ToF sensor
+#include "digitalWriteFast.h"
 
 class ToF {
   private:

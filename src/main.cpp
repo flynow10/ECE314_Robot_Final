@@ -9,6 +9,7 @@
 #include "pins.hpp"
 #include "ultrasonic.hpp"
 #include "utils.hpp"
+#include "ToF.hpp"
 
 
 // Setup constants
@@ -33,6 +34,9 @@ State currentState = STOP;
 
 Motor leftMotor(LeftForwardPin, LeftBackwardPin, LeftPWMPin, LeftBaseSpeed);
 Motor rightMotor(RightForwardPin, RightBackwardPin, RightPWMPin, RightBaseSpeed);
+ToF lSensor(lSensorPin);
+ToF rSensor(rSensorPin);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 PID<long> pidController(6, 3, 2);
 
 void drive(const int speed) {
@@ -84,8 +88,6 @@ void turnLeft() {
   wheel_counter_right = saveRight;
 }
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-
 void leftWhlCnt()
 {
   const ulong intTime = micros();
@@ -110,6 +112,8 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.clear();
+  lcd.setCursor(0, 0); // Set the cursor on the third column and first row.
+  lcd.print("US lToF rToF St"); // Print the label
 
   // Initialize pins for motors
   leftMotor.init();
@@ -124,6 +128,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(2), rightWhlCnt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(3), leftWhlCnt, CHANGE);
 
+  lSensor.init(0x30);
+  rSensor.init(0x31);
+
   wheel_counter_right = 0;
   wheel_counter_left = 0;
   LIntTime = 0;
@@ -131,6 +138,16 @@ void setup() {
 }
 
 void loop() {
+  lcd.setCursor(0, 1); 
+  lcd.print("                "); //clear bottom row
+  lcd.setCursor(0, 1); 
+  lcd.print(microsecondsToInches(readUltrasonic())); // Print the current ultrasonic reading in inches
+  lcd.setCursor(3, 1);
+  lcd.print(lSensor.getRangeMilimeters()); //print left ToF sensor reading
+  lcd.setCursor(8, 1);
+  lcd.print(rSensor.getRangeMilimeters()); //print left ToF sensor reading
+  lcd.setCursor(14, 1);
+  lcd.print(currentState);
   // Serial.println(currentState);
   switch(currentState) {
     case STOP: {

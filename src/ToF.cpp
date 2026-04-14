@@ -4,12 +4,12 @@ ToF::ToF(uint8_t pin) {
   Sensor = VL53L0X();
   xShutPin = pin;
   pinMode(xShutPin, OUTPUT);
-  digitalWrite(xShutPin, LOW);
+  digitalWriteFast(xShutPin, LOW);
 }
 
 bool ToF::init(uint8_t address) {
   delay(20);
-  digitalWrite(xShutPin, HIGH);
+  digitalWriteFast(xShutPin, HIGH);
   delay(20);
   Sensor.setAddress(address);
   Sensor.setTimeout(500);
