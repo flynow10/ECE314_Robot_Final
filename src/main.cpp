@@ -118,7 +118,7 @@ void setup() {
   initUltrasonic();
 
   pinMode(IRPin, INPUT);
-  IrReceiver.begin(IRPin, ENABLE_LED_FEEDBACK);
+  IrReceiver.begin(IRPin, DISABLE_LED_FEEDBACK);
 
   // Setup wheel encoder interrupts
   attachInterrupt(digitalPinToInterrupt(2), rightWhlCnt, CHANGE);
@@ -139,10 +139,12 @@ void loop() {
     }
     case FORWARD: {
       drive(100);
+      /*
       const ulong inches = readUltrasonic();
       if(inches != 0 && inches <= 4) {
         currentState = TURN_LEFT;
       }
+        */
       break;
     }
     case TURN_LEFT: {

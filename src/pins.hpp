@@ -5,16 +5,16 @@
 #ifndef PINS_HPP
 #define PINS_HPP
 
-constexpr int LeftForwardPin = 7;
-constexpr int LeftBackwardPin = 5;
+constexpr int LeftForwardPin = 10;
+constexpr int LeftBackwardPin = 11;
 constexpr int LeftPWMPin = 6;
-constexpr int RightForwardPin = 4;
-constexpr int RightBackwardPin = 8;
-constexpr int RightPWMPin = 9;
+constexpr int RightForwardPin = 13;
+constexpr int RightBackwardPin = 12;
+constexpr int RightPWMPin = 5;
 
-constexpr int ServoPin = 11;
-constexpr int IRPin = 10;
-constexpr int UltrasonicTriggerPin = 13;
-constexpr int UltrasonicEchoPin = 12;
+constexpr int ServoPin = 9;
+constexpr int IRPin = 8;
+constexpr int UltrasonicTriggerPin = 4;
+constexpr int UltrasonicEchoPin = 7;
 
 #endif //PINS_HPP
