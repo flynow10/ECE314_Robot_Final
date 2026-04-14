@@ -17,4 +17,7 @@ constexpr int IRPin = 8;
 constexpr int UltrasonicTriggerPin = 4;
 constexpr int UltrasonicEchoPin = 7;
 
+constexpr int lSensorPin = A2;
+constexpr int rSensorPin = A3;
+
 #endif //PINS_HPP
