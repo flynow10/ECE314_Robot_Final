@@ -7,30 +7,30 @@
 
 
 /* ---------- Motor Parameters ---------- */
-const int RSPD = 150;        //Right Wheel PWM
-const int LSPD = 150;        //Left Wheel PWM
+const int RSPD = 100;        //Right Wheel PWM
+const int LSPD = 100;        //Left Wheel PWM
 
 //Left Wheel
-const int LWhFwdPin = 8;
-const int LWhBwdPin = 9;
+const int LWhFwdPin = 10;
+const int LWhBwdPin = 11;
 const int LWhPWMPin = 6;
 
 //Right Wheel
-const int RWhFwdPin = 11;
-const int RWhBwdPin = 10;
+const int RWhFwdPin = 13;
+const int RWhBwdPin = 12;
 const int RWhPWMPin = 5; 
 
 //turn constants
-const long softTurnConstant = 25;
-const long hardTurnConstant = 20;
+const int softTurnConstant = 25;
+const int hardTurnConstant = 15;
 
 /* ---------- IR Remote Parameters ---------- */
-const int IRPin = 12;
+const int IRPin = 8;
 long decodeTime = 0;
 
 /* ---------- Servo Parameters ---------- */
 Servo ultraServo;  //servo object to control ultrasonic servo
-const int ultraServoPin = 1; //servo pin
+const int ultraServoPin = 9; //servo pin
 
 /* ---------- LCD Parameters ---------- */
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
@@ -63,7 +63,7 @@ VL53L0X lSensor;
 bool resetPID = false;
 
 //gains
-const float kp = 10;
+const float kp = 8;
 const float ki = 1;
 const float kd = 0.2;
 
@@ -80,10 +80,10 @@ int PIDLSPD = 0; //Left Wheel PWM with PID control
 
 /* ---------- State Machine Parameters ---------- */
 enum State {
-  Stop = 0,
-  Forward = 1,
-  Backward = 2,
-  Right = 3
+  Stop,
+  Start,
+  Forward,
+  Avoid_Obstacle
 };
 
 enum State current_state = Stop;
@@ -125,7 +125,7 @@ void setup() {
   //setting up IR Remote
   pinMode(IRPin, INPUT);
   Serial.begin(9600);
-  IrReceiver.begin(IRPin, ENABLE_LED_FEEDBACK); //start the reciever
+  IrReceiver.begin(IRPin, DISABLE_LED_FEEDBACK); //start the reciever
 
   //setting up encoder interrupts
   attachInterrupt(digitalPinToInterrupt(LWEncoderPin), leftWhlCnt, CHANGE);
@@ -162,8 +162,76 @@ void setup() {
 }
 
 void loop() {
- 
   /* ---------- Sensors and LCD ---------- */
+  lcd.setCursor(0, 1); 
+  lcd.print("                "); //clear bottom row
+  lcd.setCursor(0, 1); 
+  lcd.print(distance); // Print the current ultrasonic reading in inches
+  lcd.setCursor(3, 1);
+  lcd.print(lSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
+  lcd.setCursor(8, 1);
+  lcd.print(rSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
+  lcd.setCursor(14, 1);
+  lcd.print(current_state);  
+  /* ---------- IR Reciever ---------- */
+  //setting states
+  if (IrReceiver.decode()) { //checking for input from IR
+    switch (IrReceiver.decodedIRData.decodedRawData) {
+      case 0x0: break; //do nothing when a button is held down
+      case 0xBA45FF00: current_state = Start; break;
+      case 0xB847FF00: current_state = Stop; break;
+      default: break;
+    }
+    IrReceiver.resume();
+  }
+
+  /* ---------- State Machine ---------- */
+  //behavior based on states
+  switch (current_state) {
+    case Stop: { //robot stays stopped in the stop case
+      stopMoving(); 
+      current_state = Stop;
+      break;
+    }
+    case Start: { //robot begins by moving forward
+      current_state = Forward;
+    }
+    case Forward: { //robot moves forward unless it detects an obstacle
+      moveForward();
+      distance = ultraSonicRead();
+      if (distance < 8) {
+        current_state = Avoid_Obstacle;
+      } else {
+        current_state = Forward;
+      }
+      break;
+    }
+    case Avoid_Obstacle: { //checks for obstacles left and right and turns in a direction that is unobstructed
+      stopMoving(); //stop the robot
+      //measuring distances
+      ultraServo.write(0);
+      delay(1000);
+      long left = ultraSonicRead();
+      ultraServo.write(180);
+      delay(1000);
+      long right = ultraSonicRead();
+      ultraServo.write(90);
+      if ((left < 10) && (right < 10)) {
+        hardTurnRight();
+        hardTurnRight();
+      } else if (left > right) {
+        hardTurnRight();
+      } else if (right > left) {
+        hardTurnLeft();
+      }
+      current_state = Forward;
+      break;
+    }
+    default: break;
+  }
+}
+
+long ultraSonicRead() {
   //sending trigger signal to US sensor
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
@@ -171,41 +239,7 @@ void loop() {
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
   //reading echo back
-  distance = pulseIn(echoPin, HIGH) / 74 / 2;
-  lcd.setCursor(0, 1); // Set the cursor on the third column and first row.
-  lcd.print("                ");
-  lcd.setCursor(0, 1); // Set the cursor on the third column and first row.
-  lcd.print(distance); // Print the string "Hello World!"
-  lcd.setCursor(3, 1);
-  lcd.print(lSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
-  lcd.setCursor(8, 1);
-  lcd.print(rSensor.readRangeSingleMillimeters()); //print left ToF sensor reading
-  
-  /* ---------- IR Reciever ---------- */
-  //setting states
-  if (IrReceiver.decode()) { //checking for input from IR
-    decodeTime = micros();
-    switch (IrReceiver.decodedIRData.decodedRawData) {
-      case 0x0: break; //do nothing when a button is held down
-      case 0xB946FF00: current_state = Forward; break;
-      case 0xEA15FF00: current_state = Backward; break;
-      case 0xBC43FF00: current_state = Right; break;
-      default: current_state = Stop; break;
-    }
-    IrReceiver.resume();
-  } else if (micros() > (decodeTime + 500000L)) {
-    current_state = Stop;
-  }
-
-  /* ---------- State Machine ---------- */
-  //behavior based on states
-  switch (current_state) {
-    case Stop: stopMoving(); break;
-    case Forward: moveForward(); break;
-    case Backward: moveBackward(); break;
-    case Right: hardTurnRight(); break;
-    default: current_state = Stop; break;
-  }
+  return pulseIn(echoPin, HIGH) / 74 / 2;
 }
 
 //left wheel ISR
@@ -267,8 +301,6 @@ void softTurnRight() {
   digitalWrite(LWhBwdPin,LOW);
   digitalWrite(RWhFwdPin,LOW);   
   digitalWrite(RWhBwdPin,LOW);
-  long oldcntrL = cntrL;
-  long oldcntrR = cntrR;
   cntrL = 0;
   cntrR = 0;
   while (cntrL < (cntrR + softTurnConstant)) { 
@@ -277,8 +309,6 @@ void softTurnRight() {
   }
   stopMoving();
   delay(1000); 
-  cntrL=oldcntrL;
-  cntrR=oldcntrR;
 }
 
 void hardTurnRight() {
@@ -286,18 +316,14 @@ void hardTurnRight() {
   digitalWrite(LWhBwdPin,LOW);
   digitalWrite(RWhFwdPin,LOW);   
   digitalWrite(RWhBwdPin,HIGH); //enable right wheel backward
-  long oldcntrL = cntrL;
-  long oldcntrR = cntrR;
   cntrL = 0;
   cntrR = 0;
   while (cntrL + cntrR < (2 * hardTurnConstant)) { 
-    analogWrite(RWhPWMPin,RSPD - 30);
-    analogWrite(LWhPWMPin,LSPD - 30); 
+    analogWrite(RWhPWMPin,RSPD);
+    analogWrite(LWhPWMPin,LSPD); 
   }
   stopMoving();
   delay(1000); 
-  cntrL=oldcntrL;
-  cntrR=oldcntrR;
 }
 
 void softTurnLeft() {
@@ -305,8 +331,6 @@ void softTurnLeft() {
   digitalWrite(LWhBwdPin,LOW);
   digitalWrite(RWhFwdPin,HIGH);   //enable only right wheel
   digitalWrite(RWhBwdPin,LOW);
-  long oldcntrL = cntrL;
-  long oldcntrR = cntrR;
   cntrL = 0;
   cntrR = 0;
   while (cntrR < (cntrL + softTurnConstant)) { 
@@ -315,8 +339,6 @@ void softTurnLeft() {
   }
   stopMoving();
   delay(1000);
-  cntrL=oldcntrL;
-  cntrR=oldcntrR;
 }
 
 void hardTurnLeft() {
@@ -324,23 +346,19 @@ void hardTurnLeft() {
   digitalWrite(LWhBwdPin,HIGH); //enable left wheel backward
   digitalWrite(RWhFwdPin,HIGH); //enable right wheel forward 
   digitalWrite(RWhBwdPin,LOW); 
-  long oldcntrL = cntrL;
-  long oldcntrR = cntrR;
   cntrL = 0;
   cntrR = 0;
   while (cntrL + cntrR < (2 * hardTurnConstant)) { 
-    analogWrite(RWhPWMPin,RSPD - 30);
-    analogWrite(LWhPWMPin,LSPD - 30); 
+    analogWrite(RWhPWMPin,RSPD);
+    analogWrite(LWhPWMPin,LSPD); 
   }
   stopMoving();
-  delay(1000); 
-  cntrL=oldcntrL;
-  cntrR=oldcntrR;
+  delay(1000);
 }
 
 void PID() {
   /* ---------- PID Controller ---------- */
-  delay(20); //delay
+  delay(10); //delay
   //reset code
   if (resetPID) {
     resetPID = false;
