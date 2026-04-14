@@ -40,7 +40,7 @@ void Motor::set_speed_raw(const int new_speed) const {
 void Motor::start() {
     if (moving) return;
     set_motor_direction(speed);
-    analogWrite(pwm_pin, speed);
+    analogWrite(pwm_pin, get_raw_speed(speed));
     moving = true;
 }
 
