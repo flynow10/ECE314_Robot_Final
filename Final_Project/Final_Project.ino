@@ -120,7 +120,7 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0); // Set the cursor on the third column and first row.
-  lcd.print("US lToF rToF"); // Print the label
+  lcd.print("US lToF rToF St"); // Print the label
 
   //setting up IR Remote
   pinMode(IRPin, INPUT);
