@@ -188,10 +188,13 @@ void stopMoving() {
 
 //move forward with PID and following right wall
 void moveForward() {
+  //writing pins
   digitalWrite(LWhFwdPin,HIGH);    //run left wheel forward
   digitalWrite(LWhBwdPin,LOW);
   digitalWrite(RWhFwdPin,HIGH);   //run right wheel forward
   digitalWrite(RWhBwdPin,LOW);
+
+  //pid control for wall following
   if (millis() > wallFollowUpdateTime + 500) {
     int wallDist = rSensor.getRangeMilimeters();
     if (wallDist < (wallFollowDistance - wallFollowMaxDelta)) {
@@ -201,6 +204,8 @@ void moveForward() {
     }
     wallFollowUpdateTime = millis();
   }
+
+  //pid control for motor speed
   PID();
   analogWrite(RWhPWMPin, PIDRSPD); //adjust speeds based on PID control
   analogWrite(LWhPWMPin, PIDLSPD);
