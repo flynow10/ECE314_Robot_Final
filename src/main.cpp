@@ -5,6 +5,7 @@
 #include <LiquidCrystal_I2C.h> //Library for LCD
 #include <IRremote.hpp> //Library for IR Remote
 #include "ToF.hpp" //wrapper class for ToF sensor
+#include "PIDController.hpp" //PID controller class
 
 
 /* ---------- Motor Parameters ---------- */
@@ -55,8 +56,8 @@ long distance = 0;
 constexpr int rXShut = A3;
 constexpr int lXShut = A2;
 
-ToF rSensor = ToF(rXShut);
-ToF lSensor = ToF(lXShut);
+ToF rSensor(rXShut);
+ToF lSensor(lXShut);
 
 unsigned long wallFollowUpdateTime = 0;
 
@@ -66,29 +67,17 @@ constexpr int wallFollowGain = 2;
 
 int previousWallDistance = 0;
 
-/* ---------- PID Parameters ---------- */
-
-//reset variable
-bool resetPID = false;
-
-//setpoint
-long PIDSetpoint = 0;
+/* ---------- Motor PID Parameters ---------- */
 
 //gains
-const float kp = 8;
-const float ki = 1;
-const float kd = 0.2;
+constexpr float MOTOR_KP = 8;
+constexpr float MOTOR_KI = 1;
+constexpr float MOTOR_KD = 0.2;
 
-//previous time
-unsigned long prevTime = 0;
+constexpr int MOTOR_PID_UPDATE_TIME = 10;
+constexpr int MOTOR_PID_MAX = 50; //maximum modification of motor speed from PID control
 
-//persistant errors
-float prevErr = 0;
-float sumErr = 0;
-
-//PID PWM variables
-int PIDRSPD = 0; //Right Wheel PWM with PID control
-int PIDLSPD = 0; //Left Wheel PWM with PID control
+PIDController motorPID(MOTOR_KP, MOTOR_KI, MOTOR_KD, MOTOR_PID_UPDATE_TIME);
 
 /* ---------- State Machine Parameters ---------- */
 enum State {
@@ -101,47 +90,6 @@ enum State {
 enum State current_state = Stop;
 
 /* ---------- Program ---------- */
-
-void PID() {
-  /* ---------- PID Controller ---------- */
-  delay(10); //delay
-  //reset code
-  if (resetPID) {
-    resetPID = false;
-    cntrL = 0;
-    cntrR = 0;
-    prevTime = millis();
-    sumErr = 0;
-    prevErr = 0;
-    PIDSetpoint = 0;
-  }
-
-  //getting counter values
-  long tmpLcntr = cntrL;
-  long tmpRcntr = cntrR;
-
-  //calculating dt
-  unsigned long currTime = millis();
-  float dt = (currTime - prevTime) / 1000.0;
-  prevTime = currTime;
-  if (dt <= 0) {return;} //dt <= 0 is impossible
-
-  //calculating error
-  float propErr = (tmpLcntr - tmpRcntr) - PIDSetpoint; //proportional error with setpoint
-  if (abs(propErr) < 1) {propErr = 0;} //errors less than 1 are impossible
-  sumErr += propErr*dt; //integral error
-  float derErr = (propErr - prevErr)/dt; //derivative error
-  float totalErr = kp*propErr + ki*sumErr + kd*derErr; //total error
-
-  Serial.println(totalErr);
-  
-  //adjusting control values
-  constexpr int PID_MAX = 50; //maximum modification of motor speed from PID control
-  PIDLSPD  = constrain(LSPD - totalErr, LSPD - PID_MAX, LSPD + PID_MAX);
-  PIDRSPD = constrain(RSPD + totalErr, RSPD - PID_MAX, RSPD + PID_MAX);
-  
-  prevErr = propErr; //saving previous error
-}
 
 long ultraSonicRead() {
   //sending trigger signal to US sensor
@@ -183,7 +131,9 @@ void stopMoving() {
   digitalWrite(RWhBwdPin,LOW);
   analogWrite(RWhPWMPin, 0);
   analogWrite(LWhPWMPin, 0);
-  resetPID = true;
+  motorPID.reset();
+  cntrL = 0; //counters should be reset when the robot stops moving
+  cntrR = 0;
 }
 
 //move forward with PID and following right wall
@@ -198,17 +148,18 @@ void moveForward() {
   if (millis() > wallFollowUpdateTime + 500) {
     int wallDist = rSensor.getRangeMilimeters();
     if (wallDist < (wallFollowDistance - wallFollowMaxDelta)) {
-      PIDSetpoint = PIDSetpoint - wallFollowGain;
+      motorPID.setpoint = motorPID.setpoint - wallFollowGain;
     } else if (wallDist > (wallFollowDistance + wallFollowMaxDelta)) {
-      PIDSetpoint = PIDSetpoint + wallFollowGain;
+      motorPID.setpoint = motorPID.setpoint + wallFollowGain;
     }
     wallFollowUpdateTime = millis();
   }
 
   //pid control for motor speed
-  PID();
-  analogWrite(RWhPWMPin, PIDRSPD); //adjust speeds based on PID control
-  analogWrite(LWhPWMPin, PIDLSPD);
+  float error = motorPID.update(cntrL-cntrR);
+  
+  analogWrite(RWhPWMPin, constrain(RSPD + error, RSPD - MOTOR_PID_MAX, RSPD + MOTOR_PID_MAX)); //adjust speeds based on PID control
+  analogWrite(LWhPWMPin, constrain(LSPD - error, LSPD - MOTOR_PID_MAX, LSPD + MOTOR_PID_MAX));
 }
 
 //move backward with PID
@@ -217,9 +168,10 @@ void moveBackward() {
   digitalWrite(LWhBwdPin,HIGH);
   digitalWrite(RWhFwdPin,LOW);    //run right wheel backward
   digitalWrite(RWhBwdPin,HIGH);
-  PID();
-  analogWrite(RWhPWMPin, PIDRSPD); //adjust speeds based on PID control
-  analogWrite(LWhPWMPin, PIDLSPD);
+  //pid control for motor speed
+  float error = motorPID.update(cntrL-cntrR);
+  analogWrite(RWhPWMPin, constrain(RSPD + error, RSPD - MOTOR_PID_MAX, RSPD + MOTOR_PID_MAX)); //adjust speeds based on PID control
+  analogWrite(LWhPWMPin, constrain(LSPD - error, LSPD - MOTOR_PID_MAX, LSPD + MOTOR_PID_MAX));
 }
 
 void softTurnRight() {

@@ -7,7 +7,7 @@ PIDController::PIDController(int proportionalGain, int integralGain, int derivat
     updateDelay = delay;
 }
 
-float PIDController::update(float measuredError) {
+float PIDController::update(const float measuredError) {
     if (unsigned long currTime = millis() > (prevTime + updateDelay)) { //only update if current time exceeds the update delay period
         //calculating dt
         float dt = (currTime - prevTime) / 1000.0;
